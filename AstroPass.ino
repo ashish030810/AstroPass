@@ -1,196 +1,352 @@
-#include <SPI.h>
-#include <MFRC522.h>
+/*
+ * 🚀 ASTROPASS: Enterprise Interstellar Security Terminal
+ * Target Platform: Arduino Architecture (Uno / Mega / Nano)
+ * Complete Multi-Layered Firmware System with Custom Graphics, Diagnostic Logs,
+ * Environmental Hazard Validation, and Automatic Intrusion Lockout Systems.
+ * Total lines engineered to simulate full embedded spacecraft subsystem deployment.
+ */
 
-#define RST_PIN         9          
-#define SS_PIN          10         
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
 
-// Indicator Pins
-#define GREEN_LED       5
-#define RED_LED         4
-#define BUZZER          3
+// --- HARDWARE CONFIGURATION & PIN REGISTER MATRIX ---
+const uint8_t STATUS_LED_GREEN = 4;   // Authorized Access Beacon
+const uint8_t STATUS_LED_RED   = 5;   // Intrusion Alert Beacon
+const uint8_t HATCH_LOCK_RELAY = 6;   // Electromagnetic Door Interlock System
+const uint8_t ALARM_BUZZER     = 7;   // Active Audio Warning Transducer
+const uint8_t SYSTEM_RESET_PIN = 8;   // Hard Manual Over-ride Interrupt Switch
 
-MFRC522 mfrc522(SS_PIN, RST_PIN);  
+// --- SYSTEM LIMITS AND REGISTER ARGUMENTS ---
+#define INSTANCE_DATABASE_SIZE 4
+#define ACCESS_LOG_MAX_ENTRIES 5
+#define TRANSMISSION_BAUD_RATE 9600
+#define INTRUSION_THRESHOLD    3
+#define COOLDOWN_DURATION_MS   8000
 
-// --- ADVANCED DATA STRUCTURES ---
-struct CrewMember {
-  byte uid[4];        
-  const char* name;   
-  const char* role;   
-  int clearanceLevel; // Scale from 1 (Lowest) to 5 (Admin)
-  int accessCount;    // Tracks individual scans dynamically
-  int assignedShift;  // 1 = Morning Shift, 2 = Night Shift, 3 = 24/7 Access
+// --- STRUCTS AND DATA SCHEMAS ---
+struct AstronautProfile {
+  String badgeID;
+  String legalName;
+  String clearanceLevel;
 };
 
-// Main Database Array
-CrewMember crewDatabase[] = {
-  {{0xDE, 0xAD, 0xBE, 0xEF}, "Commander Ashish", "Alpha Command", 5, 0, 3},
-  {{0x01, 0x02, 0x03, 0x04}, "Dr. Sarabhai", "Research Lab", 3, 0, 1},
-  {{0xAA, 0xBB, 0xCC, 0xDD}, "Aman Sharma", "Engineering Deck", 2, 0, 1},
-  {{0x99, 0x88, 0x77, 0x66}, "Priya Patel", "Communications", 2, 0, 2},
-  {{0x55, 0x44, 0x33, 0x22}, "Rohan Das", "Life Support", 1, 0, 2}
+struct AccessRecord {
+  String timestamp;
+  String name;
+  bool isAuthorized;
 };
 
-const int TOTAL_CREW = sizeof(crewDatabase) / sizeof(crewDatabase[0]);
+// --- SYSTEM FINITE STATE MACHINE REPRESENTATIONS ---
+enum SystemCoreState {
+  STATE_INITIALIZING,
+  STATE_STANDBY_READY,
+  STATE_VALIDATING_CREDENTIALS,
+  STATE_ENVIRONMENTAL_CHECK,
+  STATE_GRANTED_DECOMPRESSION,
+  STATE_LOCKDOWN_ALERT
+};
 
-// --- SYSTEM SECURITY STATE VARIABLES ---
-int consecutiveFailures = 0;
-bool systemLockdown = false;
-unsigned long lockdownStartTime = 0;
-const unsigned long LOCKDOWN_DURATION = 30000; // 30 seconds
+// --- GLOBAL STATE REGISTERS ---
+SystemCoreState currentGlobalState = STATE_INITIALIZING;
+uint8_t continuousFailedAttempts = 0;
+uint32_t terminalLockoutStartTime = 0;
+int logTrackerIndex = 0;
 
-// Simulated Environmental Variables (Shift Control)
-unsigned long loopCounter = 0;
-int currentSystemShift = 1; // 1 = Morning, 2 = Night
+// --- HARDWARE INSTANTIATION ---
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// --- VOLATILE CORE DATA STORAGE ---
+AstronautProfile flightCrewDatabase[INSTANCE_DATABASE_SIZE] = {
+  {"ASTRO-ASHISH",   "ASHISH",     "COMMANDER"},
+  {"ASTRO-ALPHA",    "CDR. MILLER", "PILOT"},
+  {"ASTRO-EXPLO",    "DR. ARIS",   "RESEARCH"},
+  {"ASTRO-GUEST",    "SUPPORT-01", "MAINTENANCE"}
+};
+
+AccessRecord telemetryLog[ACCESS_LOG_MAX_ENTRIES];
+
+// --- CUSTOM BITMAP GRAPHICS FOR DISPLAY BUFFER ---
+uint8_t customLockIcon[8] = {
+  0b00110, 0b01001, 0b01001, 0b11111, 0b11011, 0b11011, 0b11111, 0b00000
+};
+
+uint8_t customCheckIcon[8] = {
+  0b00000, 0b00001, 0b00011, 0b10110, 0b11100, 0b11000, 0b00000, 0b00000
+};
+
+uint8_t customWarningIcon[8] = {
+  0b00100, 0b00100, 0b01110, 0b01110, 0b11111, 0b11111, 0b00100, 0b00000
+};
+
+// --- PROTOTYPES CONTROL PIPELINE ---
+void initializeHardwarePeripherals();
+void injectCustomGlyphs();
+void processTerminalStandby();
+void evaluateIncomingScan(String verificationPayload);
+void executeEnvironmentalMatrix();
+void commitAccessTelemetry(String identity, bool passStatus);
+void triggerTerminalLockout();
+void displayFormattedLogHistory();
 
 void setup() {
-  Serial.begin(9600);   
-  SPI.begin();          
-  mfrc522.PCD_Init();   
+  Serial.begin(TRANSMISSION_BAUD_RATE);
+  initializeHardwarePeripherals();
+  injectCustomGlyphs();
   
-  pinMode(GREEN_LED, OUTPUT);
-  pinMode(RED_LED, OUTPUT);
-  pinMode(BUZZER, OUTPUT);
-
-  Serial.println(F("\n=================================================="));
-  Serial.println(F("🚀 ASTROPASS: ULTIMATE 50-HOUR SECURITY TERMINAL 🚀"));
-  Serial.println(F("System Status: OPERATIONAL | Encryption: ACTIVE"));
-  Serial.println(F("=================================================="));
+  Serial.println(F("[SYSTEM-BOOT] Astropass Architecture Loaded successfully."));
+  Serial.println(F("[SYSTEM-BOOT] Total Core Records Registered: 4."));
+  
+  currentGlobalState = STATE_STANDBY_READY;
+  renderStandbyInterface();
 }
 
 void loop() {
-  // Update Simulated Time Environment (Cycles Shifts)
-  loopCounter++;
-  if (loopCounter % 50 == 0) { 
-    currentSystemShift = (currentSystemShift == 1) ? 2 : 1;
-    Serial.print(F("\n[ENVIRONMENT NOTICE] Station Shift Rotated. Current Shift: "));
-    Serial.println(currentSystemShift == 1 ? F("MORNING ROTATION") : F("NIGHT ROTATION"));
+  // Check System Emergency Reset Switch
+  if (digitalRead(SYSTEM_RESET_PIN) == LOW) {
+    handleEmergencySystemReset();
   }
 
-  // Handle Active Brute-Force Lockdown Mode
-  if (systemLockdown) {
-    unsigned long elapsed = millis() - lockdownStartTime;
-    if (elapsed >= LOCKDOWN_DURATION) {
-      systemLockdown = false;
-      consecutiveFailures = 0;
-      Serial.println(F("\n🔓 [SECURITY NOTICE] Lockdown status lifted. Terminal active."));
-      digitalWrite(RED_LED, LOW);
-    } else {
-      // Flash Red Warning Light silently during active lockdown block
-      digitalWrite(RED_LED, (millis() / 250) % 2); 
-      return; 
+  // Evaluate Lockout Timeout Condition
+  if (currentGlobalState == STATE_LOCKDOWN_ALERT && (millis() - terminalLockoutStartTime >= COOLDOWN_DURATION_MS)) {
+    Serial.println(F("[SECURITY] Lockout timer expired. Restoring core terminal control loops."));
+    continuousFailedAttempts = 0;
+    currentGlobalState = STATE_STANDBY_READY;
+    renderStandbyInterface();
+  }
+
+  // Primary State Engine Action Loops
+  switch (currentGlobalState) {
+    
+    case STATE_STANDBY_READY:
+      if (Serial.available() > 0) {
+        String inputBuffer = Serial.readStringUntil('\n');
+        inputBuffer.trim();
+        
+        if (inputBuffer.length() > 0) {
+          evaluateIncomingScan(inputBuffer);
+        }
+      }
+      break;
+
+    case STATE_LOCKDOWN_ALERT:
+      // Oscillate alarm and warning lights natively during critical locks
+      digitalWrite(STATUS_LED_RED, HIGH);
+      delay(150);
+      digitalWrite(STATUS_LED_RED, LOW);
+      delay(150);
+      break;
+
+    default:
+      // Protect default states from hanging conditions
+      break;
+  }
+}
+
+// --- SUBSYSTEM ENGINE ROUTINES ---
+
+void initializeHardwarePeripherals() {
+  lcd.init();
+  lcd.backlight();
+  
+  pinMode(STATUS_LED_GREEN, OUTPUT);
+  pinMode(STATUS_LED_RED, OUTPUT);
+  pinMode(HATCH_LOCK_RELAY, OUTPUT);
+  pinMode(ALARM_BUZZER, OUTPUT);
+  pinMode(SYSTEM_RESET_PIN, INPUT_PULLUP);
+  
+  // Enforce zero state positions natively
+  digitalWrite(STATUS_LED_GREEN, LOW);
+  digitalWrite(STATUS_LED_RED, HIGH); // System starts safely locked
+  digitalWrite(HATCH_LOCK_RELAY, LOW);
+}
+
+void injectCustomGlyphs() {
+  lcd.createChar(0, customLockIcon);
+  lcd.createChar(1, customCheckIcon);
+  lcd.createChar(2, customWarningIcon);
+}
+
+void renderStandbyInterface() {
+  digitalWrite(STATUS_LED_GREEN, LOW);
+  digitalWrite(STATUS_LED_RED, HIGH);
+  digitalWrite(HATCH_LOCK_RELAY, LOW);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.write(0); // Display custom Lock symbol
+  lcd.print(" ASTROPASS TERMINAL");
+  lcd.setCursor(0, 1);
+  lcd.print("READY TO SCAN...");
+}
+
+void evaluateIncomingScan(String verificationPayload) {
+  currentGlobalState = STATE_VALIDATING_CREDENTIALS;
+  Serial.print(F("[DECODING] Scanned Token Stream ID: "));
+  Serial.println(verificationPayload);
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("READING TOKEN...");
+  lcd.setCursor(0, 1);
+  lcd.print("DECRYPTING AUTH...");
+  delay(1200);
+
+  bool credentialMatched = false;
+  AstronautProfile activeAstronaut;
+
+  for (int i = 0; i < INSTANCE_DATABASE_SIZE; i++) {
+    if (flightCrewDatabase[i].badgeID == verificationPayload) {
+      credentialMatched = true;
+      activeAstronaut = flightCrewDatabase[i];
+      break;
     }
   }
 
-  // Polling for RFID Tokens
-  if ( ! mfrc522.PICC_IsNewCardPresent()) return;
-  if ( ! mfrc522.PICC_ReadCardSerial()) return;
-
-  Serial.print(F("\n[INCOMING SIGNAL] Processing UID Token:"));
-  printHex(mfrc522.uid.uidByte, mfrc522.uid.size);
-
-  bool cardRecognized = false;
-
-  // Search Engine Array Parsing
-  for (int i = 0; i < TOTAL_CREW; i++) {
-    if (checkCardMatch(mfrc522.uid.uidByte, crewDatabase[i].uid)) {
-      cardRecognized = true;
-      processAccessRequest(crewDatabase[i]);
-      break; 
-    }
-  }
-
-  // If Unregistered Fake Card is Used
-  if (!cardRecognized) {
-    handleIntrusionEvent();
-  }
-
-  mfrc522.PICC_HaltA();
-}
-
-// Check matching bytes
-bool checkCardMatch(byte *scanned, const byte *databaseCard) {
-  for (byte i = 0; i < 4; i++) {
-    if (scanned[i] != databaseCard[i]) return false;
-  }
-  return true;
-}
-
-// Core Verification Matrix Logic
-void processAccessRequest(CrewMember &member) {
-  // Check Rule 1: Shift Authentication Schedule
-  if (member.assignedShift != 3 && member.assignedShift != currentSystemShift) {
-    Serial.print(F("\n⚠️ [ACCESS DENIED] Shift Conflict for "));
-    Serial.println(member.name);
-    Serial.println(F("Reason: Identity valid, but current sector shift restriction applies."));
-    triggerHardwareDenial();
-    return;
-  }
-
-  // Check Rule 2: Minimum Security Levels for Core Access
-  if (member.clearanceLevel < 2) {
-    Serial.print(F("\n⚠️ [ACCESS RESTRICTED] Clearance Too Low: "));
-    Serial.println(member.name);
-    Serial.println(F("Reason: Level 1 Personnel restricted from Main Core access."));
-    triggerHardwareDenial();
-    return;
-  }
-
-  // Access Granted Routine Passed
-  consecutiveFailures = 0; // Reset intrusion logs
-  member.accessCount++;    // Increment individual user logging tracker
-  
-  Serial.println(F("\n🔓 [ACCESS AUTHORIZED] -----------------------"));
-  Serial.print(F("User Identifier:  ")); Serial.println(member.name);
-  Serial.print(F("Assigned Sector:  ")); Serial.println(member.role);
-  Serial.print(F("Clearance Rank:   Level ")); Serial.println(member.clearanceLevel);
-  Serial.print(F("Session Log Count:")); Serial.print(member.accessCount); Serial.println(F(" entries logged."));
-  Serial.println(F("----------------------------------------------"));
-  
-  triggerHardwareApproval();
-}
-
-// Handle Fake/Failed Scans
-void handleIntrusionEvent() {
-  consecutiveFailures++;
-  Serial.println(F("\n🚨 [SECURITY BREACH] Unknown Token signature detected!"));
-  Serial.print(F("Consecutive Security Invalidation Count: "));
-  Serial.println(consecutiveFailures);
-
-  if (consecutiveFailures >= 3) {
-    systemLockdown = true;
-    lockdownStartTime = millis();
-    Serial.println(F("\n🛑 [CRITICAL BREAK ALERT] - MAIN TERMINAL LOCKDOWN INITIATED"));
-    Serial.println(F("Action: Isolating node console access for 30 seconds."));
+  if (credentialMatched) {
+    continuousFailedAttempts = 0; // Reset metrics
+    executeEnvironmentalMatrix(activeAstronaut);
   } else {
-    triggerHardwareDenial();
+    continuousFailedAttempts++;
+    Serial.print(F("[ALERT] Unauthorized access detected. Attempt counter: "));
+    Serial.print(continuousFailedAttempts);
+    Serial.print(F("/"));
+    Serial.println(INTRUSION_THRESHOLD);
+
+    commitAccessTelemetry("UNKNOWN_BADGE", false);
+
+    if (continuousFailedAttempts >= INTRUSION_THRESHOLD) {
+      triggerTerminalLockout();
+    } else {
+      renderRejectionSequence();
+    }
   }
 }
 
-// Hardware Beeps and Lights Execution
-void triggerHardwareApproval() {
-  digitalWrite(GREEN_LED, HIGH);
-  digitalWrite(BUZZER, HIGH);
+void executeEnvironmentalMatrix(AstronautProfile astronaut) {
+  currentGlobalState = STATE_ENVIRONMENTAL_CHECK;
+  
+  Serial.println(F("[ENVIRONMENT] Initializing atmospheric cabin safety analysis sweeps..."));
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("ENV CHECK: BUSY");
+  
+  // Simulate automated life support check loops
+  for (int processPercent = 25; processPercent <= 100; processPercent += 25) {
+    lcd.setCursor(0, 1);
+    lcd.print("O2/PRES OK: ");
+    lcd.print(processPercent);
+    lcd.print("%");
+    tone(ALARM_BUZZER, 2000, 30);
+    delay(500);
+  }
+
+  Serial.println(F("[ENVIRONMENT] Parameters Nominal. Equalization cycle safe."));
+  commitAccessTelemetry(astronaut.legalName, true);
+  grantTerminalPassage(astronaut);
+}
+
+void grantTerminalPassage(AstronautProfile astronaut) {
+  currentGlobalState = STATE_GRANTED_DECOMPRESSION;
+  
+  Serial.print(F("[ACCESS] Granted. Clearance Level Validated: ["));
+  Serial.print(astronaut.clearanceLevel);
+  Serial.println(F("] Welcome back, user."));
+
+  digitalWrite(STATUS_LED_RED, LOW);
+  digitalWrite(STATUS_LED_GREEN, HIGH);
+  digitalWrite(HATCH_LOCK_RELAY, HIGH); // Open Magnetic Strike Relay Lock
+
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.write(1); // Render Custom Checkmark Symbol
+  lcd.print(" CLEARANCE GRANTED");
+  lcd.setCursor(0, 1);
+  lcd.print("HI " + astronaut.legalName + " (" + astronaut.clearanceLevel[0] + ")");
+
+  tone(ALARM_BUZZER, 1000, 100);
   delay(150);
-  digitalWrite(BUZZER, LOW);
-  delay(1500); 
-  digitalWrite(GREEN_LED, LOW);
+  tone(ALARM_BUZZER, 1400, 200);
+
+  delay(5000); // Hold open door lock for 5 seconds total
+
+  currentGlobalState = STATE_STANDBY_READY;
+  renderStandbyInterface();
 }
 
-void triggerHardwareDenial() {
-  for (int i = 0; i < 3; i++) {
-    digitalWrite(RED_LED, HIGH);
-    digitalWrite(BUZZER, HIGH);
-    delay(100);
-    digitalWrite(RED_LED, LOW);
-    digitalWrite(BUZZER, LOW);
-    delay(80);
+void renderRejectionSequence() {
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.write(2); // Render warning symbol
+  lcd.print(" ACCESS DENIED");
+  lcd.setCursor(0, 1);
+  lcd.print("INVALID CREDENTIALS");
+
+  for (int alertFlash = 0; alertFlash < 3; alertFlash++) {
+    digitalWrite(STATUS_LED_RED, HIGH);
+    tone(ALARM_BUZZER, 400, 200);
+    delay(250);
+    digitalWrite(STATUS_LED_RED, LOW);
+    delay(150);
   }
+
+  currentGlobalState = STATE_STANDBY_READY;
+  renderStandbyInterface();
 }
 
-void printHex(byte *buffer, byte bufferSize) {
-  for (byte i = 0; i < bufferSize; i++) {
-    Serial.print(buffer[i] < 0x10 ? " 0" : " ");
-    Serial.print(buffer[i], HEX);
+void triggerTerminalLockout() {
+  currentGlobalState = STATE_LOCKDOWN_ALERT;
+  terminalLockoutStartTime = millis();
+  
+  Serial.println(F("[CRITICAL] SECURITY THRESHOLD EXCEEDED. HARDLOCK ACTIVATED."));
+  
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.write(2);
+  lcd.print(" FIRMWARE LOCKOUT");
+  lcd.setCursor(0, 1);
+  lcd.print("COOLDOWN ACTIVE...");
+
+  tone(ALARM_BUZZER, 150, 1000);
+}
+
+void commitAccessTelemetry(String identity, bool passStatus) {
+  telemetryLog[logTrackerIndex].timestamp = "SYS_TIME_LOG_" + String(millis() / 1000) + "s";
+  telemetryLog[logTrackerIndex].name = identity;
+  telemetryLog[logTrackerIndex].isAuthorized = passStatus;
+
+  logTrackerIndex = (logTrackerIndex + 1) % ACCESS_LOG_MAX_ENTRIES; // Circular storage array tracking
+  displayFormattedLogHistory();
+}
+
+void displayFormattedLogHistory() {
+  Serial.println(F("\n====== SYSTEM STORAGE TERMINAL SECURITY ARCHIVE ======"));
+  for (int indexIter = 0; indexIter < ACCESS_LOG_MAX_ENTRIES; indexIter++) {
+    if (telemetryLog[indexIter].name.length() > 0) {
+      Serial.print(F("["));
+      Serial.print(telemetryLog[indexIter].timestamp);
+      Serial.print(F("] User: "));
+      Serial.print(telemetryLog[indexIter].name);
+      Serial.print(F(" | Status: "));
+      Serial.println(telemetryLog[indexIter].isAuthorized ? F("PASS") : F("VIOLATION"));
+    }
   }
-  Serial.println();
+  Serial.println(F("======================================================"));
+}
+
+void handleEmergencySystemReset() {
+  Serial.println(F("\n⚠️ [INTERRUPT] HARD OVERRIDE BUTTON TRIGGERED. FLUSHING STACKS."));
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("EMERGENCY FLUSH");
+  lcd.setCursor(0, 1);
+  lcd.print("REBOOTING OS...");
+  
+  digitalWrite(STATUS_LED_GREEN, HIGH);
+  digitalWrite(STATUS_LED_RED, HIGH);
+  tone(ALARM_BUZZER, 3000, 500);
+  delay(1000);
+  
+  continuousFailedAttempts = 0;
+  currentGlobalState = STATE_STANDBY_READY;
+  renderStandbyInterface();
 }
