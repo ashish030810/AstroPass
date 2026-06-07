@@ -3,7 +3,6 @@
  * Target Platform: Arduino Architecture (Uno / Mega / Nano)
  * Complete Multi-Layered Firmware System with Custom Graphics, Diagnostic Logs,
  * Environmental Hazard Validation, and Automatic Intrusion Lockout Systems.
- * Total lines engineered to simulate full embedded spacecraft subsystem deployment.
  */
 
 #include <Wire.h>
@@ -81,12 +80,15 @@ uint8_t customWarningIcon[8] = {
 // --- PROTOTYPES CONTROL PIPELINE ---
 void initializeHardwarePeripherals();
 void injectCustomGlyphs();
-void processTerminalStandby();
+void renderStandbyInterface();
 void evaluateIncomingScan(String verificationPayload);
-void executeEnvironmentalMatrix();
+void executeEnvironmentalMatrix(AstronautProfile astronaut);
+void grantTerminalPassage(AstronautProfile astronaut);
+void renderRejectionSequence();
 void commitAccessTelemetry(String identity, bool passStatus);
 void triggerTerminalLockout();
 void displayFormattedLogHistory();
+void handleEmergencySystemReset(); // Added missing prototype to prevent scope errors
 
 void setup() {
   Serial.begin(TRANSMISSION_BAUD_RATE);
@@ -137,7 +139,6 @@ void loop() {
       break;
 
     default:
-      // Protect default states from hanging conditions
       break;
   }
 }
@@ -174,7 +175,7 @@ void renderStandbyInterface() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.write(0); // Display custom Lock symbol
-  lcd.print(" ASTROPASS TERMINAL");
+  lcd.print(" ASTROPASS TERM "); // Shortened to fit 16-char screen
   lcd.setCursor(0, 1);
   lcd.print("READY TO SCAN...");
 }
@@ -203,7 +204,7 @@ void evaluateIncomingScan(String verificationPayload) {
   }
 
   if (credentialMatched) {
-    continuousFailedAttempts = 0; // Reset metrics
+    continuousFailedAttempts = 0; 
     executeEnvironmentalMatrix(activeAstronaut);
   } else {
     continuousFailedAttempts++;
@@ -230,7 +231,6 @@ void executeEnvironmentalMatrix(AstronautProfile astronaut) {
   lcd.setCursor(0, 0);
   lcd.print("ENV CHECK: BUSY");
   
-  // Simulate automated life support check loops
   for (int processPercent = 25; processPercent <= 100; processPercent += 25) {
     lcd.setCursor(0, 1);
     lcd.print("O2/PRES OK: ");
@@ -254,12 +254,12 @@ void grantTerminalPassage(AstronautProfile astronaut) {
 
   digitalWrite(STATUS_LED_RED, LOW);
   digitalWrite(STATUS_LED_GREEN, HIGH);
-  digitalWrite(HATCH_LOCK_RELAY, HIGH); // Open Magnetic Strike Relay Lock
+  digitalWrite(HATCH_LOCK_RELAY, HIGH); 
 
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.write(1); // Render Custom Checkmark Symbol
-  lcd.print(" CLEARANCE GRANTED");
+  lcd.print(" AUTH GRANTED");
   lcd.setCursor(0, 1);
   lcd.print("HI " + astronaut.legalName + " (" + astronaut.clearanceLevel[0] + ")");
 
@@ -279,7 +279,7 @@ void renderRejectionSequence() {
   lcd.write(2); // Render warning symbol
   lcd.print(" ACCESS DENIED");
   lcd.setCursor(0, 1);
-  lcd.print("INVALID CREDENTIALS");
+  lcd.print("INVALID BADGE");
 
   for (int alertFlash = 0; alertFlash < 3; alertFlash++) {
     digitalWrite(STATUS_LED_RED, HIGH);
@@ -302,19 +302,19 @@ void triggerTerminalLockout() {
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.write(2);
-  lcd.print(" FIRMWARE LOCKOUT");
+  lcd.print(" FIRMWARE LOCK");
   lcd.setCursor(0, 1);
-  lcd.print("COOLDOWN ACTIVE...");
+  lcd.print("COOLDOWN ACTIVE "); // Kept exactly to 16 characters
 
   tone(ALARM_BUZZER, 150, 1000);
 }
 
 void commitAccessTelemetry(String identity, bool passStatus) {
-  telemetryLog[logTrackerIndex].timestamp = "SYS_TIME_LOG_" + String(millis() / 1000) + "s";
+  telemetryLog[logTrackerIndex].timestamp = "LOG_" + String(millis() / 1000) + "s";
   telemetryLog[logTrackerIndex].name = identity;
   telemetryLog[logTrackerIndex].isAuthorized = passStatus;
 
-  logTrackerIndex = (logTrackerIndex + 1) % ACCESS_LOG_MAX_ENTRIES; // Circular storage array tracking
+  logTrackerIndex = (logTrackerIndex + 1) % ACCESS_LOG_MAX_ENTRIES; 
   displayFormattedLogHistory();
 }
 
