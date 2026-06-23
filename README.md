@@ -1,45 +1,44 @@
-# 🚀 ASTROPASS: Enterprise Interstellar Security Terminal
+# ASTROPASS
+Smart RFID crew access system — because space doesn't forgive unauthorized entry
 
-An advanced, multi-layered embedded security terminal engineered for the Hack Club x NASA Stardance Challenge. This system simulates a spacecraft hatch control interlock system featuring custom LCD graphics, automated environmental cabin validation sweeps, an access-log history tracker, and an anti-intrusion automatic lockout module.
+## What is this?
+
+Imagine you're on Mars or the Moon. There's a habitat — maybe a lab, maybe a life support room. You can't just let anyone walk in. The wrong person entering at the wrong time could be catastrophic.
+
+ASTROPASS is a prototype entry/exit security terminal built for exactly that. Each astronaut gets their own RFID tag. Scan it — if it's registered, you're in. If it's not, the system locks you out. No exceptions, no overrides without the right credentials.
+
+I built this for the Hack Club x NASA Stardance Challenge as a real working prototype of what crew access control could look like on a deep space mission.
+
+## How it works
+
+The flow is simple but the logic underneath isn't:
+
+1. System boots into standby — red LED on, LCD shows `READY TO SCAN`
+2. Astronaut scans their RFID tag on the MFRC522 reader
+3. If the tag matches a registered crew ID → green LED, relay opens, welcome message
+4. If it doesn't match → buzzer sounds, strike logged
+5. 3 failed scans in a row → full lockdown for 8 seconds, no entry possible
+
+Before granting access, it also runs an automated life-support sweep — simulating O₂ and pressure checks from 0% to 100%. The hatch doesn't open until that passes too.
+
+## Hardware
+
+- Arduino Uno
+- MFRC522 RFID reader + crew tags
+- I2C 16x2 LCD display
+- Green LED (access granted) + Red LED (locked/alert)
+- Buzzer (intrusion alert)
+- Relay module (hatch interlock)
+- Reset button (manual override)
+
+## What makes it different
+
+- No blocking delays — runs on a finite state machine so the system stays responsive at all times
+- Custom LCD graphics — I designed the padlock, checkmark and alert icons as binary bitmaps loaded directly into the display buffer
+- Every scan is logged — circular buffer keeps a history of all access events, readable over Serial
+- 3-strike lockout — consecutive failures trigger a hard cooldown, just like a real secure terminal
+
 
 ---
-
-## 🛠️ Hardware Pin Configuration Matrix
-
-The physical architecture is wired using the following pin map:
-
-| Component | Arduino Uno Pin | Description |
-| :--- | :--- | :--- |
-| **I2C LCD (SDA)** | **A4** | Data Line for 16x2 Display |
-| **I2C LCD (SCL)** | **A5** | Clock Line for 16x2 Display |
-| **Green LED** | **Pin 4** | Authorized Access Beacon |
-| **Red LED** | **Pin 5** | Intrusion Alert Beacon / System Safe Lock |
-| **Hatch Relay** | **Pin 6** | Electromagnetic Door Interlock Simulator |
-| **Buzzer** | **Pin 7** | Active Audio Warning Transducer |
-| **Reset Switch** | **Pin 8** | Hard Manual Over-ride Interrupt Button |
-
----
-
-## 🛰️ Core System Features
-
-* **Finite State Machine Architecture:** Avoids processor-blocking delays by utilizing an optimized `switch-case` architecture tracking system states natively.
-* **Custom LCD Glyphs:** Loads custom-designed binary bitmaps (Padlock, Verification Checkmark, and Alert Triangle) directly into the display hardware buffer.
-* **Environmental Life Support Sweep:** Simulates automated atmospheric testing cycles ($O_2$ and pressure checks) before allowing decompression entry.
-* **Automated Intrusion Defense:** Features a 3-strike penalty threshold that instantly initiates a hard-lock cooldown timer (`8000ms`) upon consecutive credential failures.
-* **Circular Buffer Log System:** Tracks runtime event histories and outputs formatted diagnostic log tables over the Serial data stream.
-
----
-
-## 📦 How It Works
-
-1. **Standby Mode:** The terminal defaults to a secure locked state (Red LED on) and renders `READY TO SCAN...` alongside a custom lock graphic.
-2. **Scan Evaluation:** Passing an authorization badge ID (e.g., `ASTRO-ASHISH`) through the Serial Monitor triggers a token decryption sequence.
-3. **Safety Analysis:** If the badge matches the database profile, the terminal runs a dynamic life-support diagnostic sweep from 0% to 100%.
-4. **Access Granted:** The system turns on the Green LED, flips the magnetic door relay, and displays a personalized welcome message (`WELCOME back, user`).
-5. **Intrusion Trigger:** Unrecognized credentials flash warning screens and sound acoustic chimes. 3 failures activate the system lockdown.
-
----
-
-## 🪵 Project Milestones & Time Log
-* **Total Time Logged:** 11 Hours & 8 Minutes via Hackatime.
-* **Version:** 1.0 Complete Release.
+Built by Ashish — Hack Club x NASA Stardance Challenge, 2026
+  
